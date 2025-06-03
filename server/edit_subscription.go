@@ -2,7 +2,6 @@ package main
 
 import (
 	"net/http"
-	"strings"
 
 	"github.com/gorilla/mux"
 
@@ -11,8 +10,6 @@ import (
 	"github.com/mattermost/mattermost-plugin-confluence/server/config"
 	"github.com/mattermost/mattermost-plugin-confluence/server/serializer"
 	"github.com/mattermost/mattermost-plugin-confluence/server/service"
-	"github.com/mattermost/mattermost-plugin-confluence/server/store"
-	"github.com/mattermost/mattermost-plugin-confluence/server/util/types"
 )
 
 var editChannelSubscription = &Endpoint{
@@ -38,26 +35,6 @@ func handleEditChannelSubscription(w http.ResponseWriter, r *http.Request, p *Pl
 		return
 	}
 
-	pluginConfig := config.GetConfig()
-	if pluginConfig.ServerVersionGreaterthan9 {
-		var conn *types.Connection
-		conn, err = store.LoadConnection(pluginConfig.ConfluenceURL, userID)
-		if err != nil {
-			if strings.Contains(err.Error(), "not found") {
-				http.Error(w, "User not connected to Confluence", http.StatusUnauthorized)
-				return
-			}
-
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		if len(conn.ConfluenceAccountID()) == 0 {
-			http.Error(w, "User not connected to Confluence", http.StatusUnauthorized)
-			return
-		}
-	}
-
 	switch subscriptionType {
 	case serializer.SubscriptionTypeSpace:
 		subscription, err = serializer.SpaceSubscriptionFromJSON(r.Body)
@@ -67,6 +44,16 @@ func handleEditChannelSubscription(w http.ResponseWriter, r *http.Request, p *Pl
 		p.client.Log.Error("Error updating channel subscription", "Subscription Type", subscriptionType, "error", "Invalid subscription type")
 		http.Error(w, "Invalid subscription type", http.StatusBadRequest)
 		return
+	}
+
+	pluginConfig := config.GetConfig()
+	if pluginConfig.ServerVersionGreaterthan9 {
+		var statusCode int
+		if statusCode, err = p.validateUserConfluenceAccess(userID, pluginConfig.ConfluenceURL, subscriptionType, subscription); err != nil {
+			p.client.Log.Error("Error validating the user's Confluence access", err.Error())
+			http.Error(w, err.Error(), statusCode)
+			return
+		}
 	}
 
 	if err != nil {
