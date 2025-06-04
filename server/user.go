@@ -41,14 +41,10 @@ func httpOAuth2Connect(w http.ResponseWriter, r *http.Request, p *Plugin) {
 		return
 	}
 
-	connection, err := store.LoadConnection(instanceURL, mattermostUserID)
+	connection, err := store.LoadConnection(instanceURL, mattermostUserID) // Error is expected if the connection doesn't exist — safe to ignore
 	if err == nil && len(connection.ConfluenceAccountID()) != 0 {
 		_, _ = respondErr(w, http.StatusBadRequest,
 			errors.New("you already have a Confluence account linked to your Mattermost account. Please use `/confluence disconnect` to disconnect"))
-		return
-	} else if err != nil {
-		p.client.Log.Error("Error loading the connection", "UserID", mattermostUserID, "InstanceURL", instanceURL, "error", err.Error())
-		_, _ = respondErr(w, http.StatusInternalServerError, errors.New("error occurred while connecting user to Confluence"))
 		return
 	}
 
